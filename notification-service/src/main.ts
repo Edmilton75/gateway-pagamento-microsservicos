@@ -9,9 +9,9 @@ async function bootstrap() {
       transport: Transport.RMQ,
       options: {
         urls: ['amqp://guest:guest@rabbitmq:5672'],
-        queue: 'payments_queue',
+        queue: 'payments_notifications_queue',
         queueOptions: {
-          durable: false,
+          durable: true,
         },
       },
     },

@@ -1,5 +1,5 @@
 services:
-  # Serviço do Banco de Dados PostgreSQL
+  # --- BANCO DE DADOS ---
   postgres-merchant-db:
     image: postgres:15-alpine
     container_name: postgres-merchant-db-container
@@ -11,52 +11,96 @@ services:
       - "5433:5432"
     volumes:
       - postgres_merchant_data:/var/lib/postgresql/data
+    # NOVO: Healthcheck para o banco de dados
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U merchantuser -d merchants_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
-  # Serviço da API do Merchant-Service
+  # --- MENSAGERIA ---
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: rabbitmq-container
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    # NOVO: Healthcheck para o RabbitMQ
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "check_running", "-q"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # --- SERVIÇO DE LOJISTAS (MERCHANT) ---
   merchant-api:
     container_name: merchant-api-container
     build:
       context: ./merchant-service
       dockerfile: Dockerfile
-    ports:
-      - "3001:3001"
     env_file:
       - ./merchant-service/.env
+    # ALTERADO: Agora espera o banco de dados estar saudável
     depends_on:
-      - postgres-merchant-db
+      postgres-merchant-db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
-  # NOSSO NOVO SERVIÇO DE PAGAMENTOS!
+  # --- SERVIÇO DE PAGAMENTOS (PAYMENT) ---
   payment-api:
     container_name: payment-api-container
     build:
-      context: ./payment-service # Aponta para a pasta do novo serviço
+      context: ./payment-service
       dockerfile: Dockerfile
-    ports:
-      - "3000:3000" # Expõe a porta 3000 que definimos no main.ts
     env_file:
-      - ./payment-service/.env # Carrega as variáveis de ambiente dele
+      - ./payment-service/.env
+    # ALTERADO: Agora espera o banco E o RabbitMQ estarem saudáveis
     depends_on:
-      - postgres-merchant-db # Também depende do banco de dados
+      postgres-merchant-db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
-  # SERVIÇO: O MESSAGE BROKER!
-  rabbitmq:
-    image: rabbitmq:3.13-management-alpine # Imagem com a interface de gerenciamento
-    container_name: rabbitmq-container
-    ports:
-      - "5672:5672" # Porta para as aplicações se conectarem
-      - "15672:15672" # Porta para a interface web de gerenciamento
-    environment:
-      RABBITMQ_DEFAULT_USER: guest # Usuário padrão
-      RABBITMQ_DEFAULT_PASS: guest # Senha padrão
-    
+  # --- SERVIÇO DE NOTIFICAÇÕES ---
   notification-service:
     container_name: notification-service-container
     build:
-      context: ./notification-service # Aponta para a pasta do novo serviço
+      context: ./notification-service
       dockerfile: Dockerfile
-          # Não precisa de 'ports', pois ele só se comunica via RabbitMQ
+    # ALTERADO: Agora espera o RabbitMQ estar saudável
     depends_on:
-        - rabbitmq # Garante que o RabbitMQ inicie antes dele
+      rabbitmq:
+        condition: service_healthy
+
+  # --- API GATEWAY ---
+  api-gateway:
+    container_name: api-gateway-container
+    build:
+      context: ./api-gateway
+      dockerfile: Dockerfile
+    ports:
+      - "8080:3000"
+    # ALTERADO: Agora espera os serviços estarem saudáveis
+    depends_on:
+      merchant-api:
+        condition: service_healthy
+      payment-api:
+        condition: service_healthy
 
 volumes:
   postgres_merchant_data:
