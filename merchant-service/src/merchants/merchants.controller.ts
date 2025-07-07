@@ -14,15 +14,15 @@ import { MerchantsService } from './merchants.service';
 import { Merchant } from './entities/merchant.entity';
 import { CreateMerchantDto } from './dto/create-merchant.dto';
 import { UpdateMerchantDto } from './dto/update-merchant.dto';
+import { MessagePattern, Payload } from '@nestjs/microservices';
 
 @Controller('merchants')
 export class MerchantsController {
   constructor(private readonly merchantsService: MerchantsService) {}
-  @Post()
-  @HttpCode(HttpStatus.CREATED)
-  async create(
-    @Body() createMerchantDto: CreateMerchantDto,
-  ): Promise<Merchant> {
+
+  // Responde à mensagem com o padrão 'create_merchant'
+  @MessagePattern({ cmd: 'create_merchant' })
+  create(@Payload() createMerchantDto: CreateMerchantDto) {
     return this.merchantsService.create(createMerchantDto);
   }
 

@@ -5,6 +5,9 @@ import { PaymentsModule } from './payments/payments.module';
 
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { TerminusModule } from '@nestjs/terminus';
+import { HttpModule } from '@nestjs/axios';
+import { HealthController } from './health.controller';
 
 @Module({
   imports: [
@@ -24,11 +27,20 @@ import { TypeOrmModule } from '@nestjs/typeorm';
         database: configService.get<string>('DB_DATABASE'),
         autoLoadEntities: true, // A maneira moderna e fácil!
         synchronize: true, // Ótimo para desenvolvimento
+        extra: {
+          max: 10, // Número máximo de conexões no pool
+          idleTimeoutMillis: 30000,
+        },
+        connectTimeoutMS: 30000,
+        retryAttempts: 10, // Tenta conectar 10 vezes
+        retryDelay: 3000,
       }),
     }),
     PaymentsModule,
+    TerminusModule,
+    HttpModule,
   ],
-  controllers: [AppController],
+  controllers: [AppController, HealthController],
   providers: [AppService],
 })
 export class AppModule {}
